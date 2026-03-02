@@ -1,0 +1,10 @@
+{
+  "SUBNET": "192.168.0",
+  "IFACE": "wlan1",
+  "LOOT_DIR": "/mmc/root/loot/pagerpwn",
+  "SMB_HOST": "",
+  "SMB_SHARE": "",
+  "SMB_USER": "",
+  "SMB_PASS": "",
+  "PORT_SCAN_TIMEOUT": 1.0
+}
