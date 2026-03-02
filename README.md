@@ -15,7 +15,7 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **Printer exploitation** — HP JetDirect PJL enumeration + LCD hijack
 - **Live camera viewer** — streams JPEG snapshots directly to the pager screen
 - **mDNS harvesting** — passive device discovery (zero packets sent)
-- **Home Assistant probing** — unauthenticated API detection
+- **Animated splash intro** — glitch/matrix rain video plays on boot (skippable)
 - **SMB exfiltration** — syncs captured loot to a remote share
 - **On-device loot browser** — review captures without SSH
 
@@ -47,7 +47,7 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 
 ## Boot Flow
 
-1. **Splash** — PAGERPWN title + startup jingle
+1. **Splash** — Animated glitch intro video (matrix rain → chromatic logo reveal → title card)
 2. **Interface select** — auto-detects `wlan0cli` and `eth0`. If both are up, you pick which network to scan. If only one has an IP, it auto-selects
 3. **Confirmation** — shows selected interface, IP, and target subnet
 4. **Main menu** — ready to go
@@ -70,7 +70,6 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **CAMERA PROBE** | IP camera HTTP API + RTSP credential brute force using wordlists |
 | **CAM SNAPSHOT** | Live camera JPEG viewer on the pager LCD (auto-refresh) |
 | **mDNS HARVEST** | Passive mDNS listener — catalogs devices without sending any packets |
-| **HA PROBE** | Home Assistant unauthenticated API check |
 | **EXFIL LOOT** | Syncs all captured loot to a remote SMB share |
 | **VIEW LOOT** | Browse and review captured files on-device |
 | **QUIET MODE** | Toggle passive-only (disables LLMNR poisoning + active scans) |
@@ -133,7 +132,6 @@ All captures saved to `/mmc/root/loot/pagerpwn/` (configurable).
 | `camera_<ts>.txt` | Camera auth brute force results |
 | `cam_snap_<ts>.txt` | Camera snapshot session stats |
 | `mdns_<ts>.json` | Passive mDNS device catalog |
-| `ha_<ts>.txt` | Home Assistant API probe response |
 
 ## File Structure
 
@@ -148,6 +146,9 @@ PagerPwn/
 ├── wordlists/
 │   ├── usernames.txt     # default/IoT admin usernames
 │   └── passwords.txt     # default/weak passwords
+├── assets/
+│   ├── splash.ppv        # animated intro (JPEG frame bundle)
+│   └── splash.mpg        # MPEG-1 version of intro
 ├── modules/
 │   ├── arp_scan.py       # raw socket ARP sweep
 │   ├── port_scan.py      # threaded port scanner + device classifier
@@ -156,7 +157,10 @@ PagerPwn/
 │   ├── rtsp_probe.py     # camera HTTP/RTSP credential brute force
 │   ├── cam_snap.py       # live camera snapshot viewer
 │   ├── mdns_harvest.py   # passive mDNS device catalog
+│   ├── video_player.py   # PPV splash video player
 │   └── exfil.py          # loot writer + SMB exfil trigger
+├── tools/
+│   └── gen_splash_video.py  # generates splash.ppv + splash.mpg
 └── ui/
     ├── menu.py           # LCD menu system
     └── scroll.py         # scrollable result viewer

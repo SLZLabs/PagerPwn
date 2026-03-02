@@ -102,7 +102,7 @@ class Menu:
         # Status bar
         bar_y = 222 - STATUS_H
         p.fill_rect(0, bar_y, 480, STATUS_H, C_STATUS)
-        p.draw_text(4, bar_y + 3, "[UP/DN] MOVE  [A] SELECT", C_DIM, 1)
+        p.draw_text(4, bar_y + 3, "[UP/DN] MOVE  [A] SELECT  [BB] EXIT", C_DIM, 1)
 
         p.flip()
 
@@ -209,22 +209,59 @@ class Menu:
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
+    def _do_exit(self, config):
+        """Shared exit sequence."""
+        p = self.pager
+        p.clear(C_BG)
+        p.draw_text_centered(85, "Goodbye.", C_DIM, 4)
+        p.flip()
+        p.beep(523, 100)
+        p.beep(392, 100)
+        p.beep(262, 200)
+        time.sleep(0.8)
+
     def run(self, config):
         """
         Blocking main menu loop. Returns when EXIT is selected.
         Handles QUIET MODE toggle inline.
+        B hold (1.5s) or double-tap B exits from main menu.
         """
         p = self.pager
         p.clear_input_events()
         self._draw_menu()
 
+        b_press_time = None     # tracks B hold
+        b_last_tap = 0          # tracks double-tap
+        DOUBLE_TAP_MS = 400
+
         while True:
             event = p.get_input_event()
+
+            # Check B hold while waiting for events
+            if b_press_time and (time.time() - b_press_time) * 1000 >= HOLD_B_MS:
+                self._do_exit(config)
+                return
+
             if not event:
                 time.sleep(0.02)
                 continue
 
             btn, etype, _ = event
+
+            # Track B hold and double-tap across all event types
+            if btn == Pager.BTN_B:
+                if etype == Pager.EVENT_PRESS:
+                    now = time.time()
+                    # Double-tap check
+                    if (now - b_last_tap) * 1000 <= DOUBLE_TAP_MS:
+                        self._do_exit(config)
+                        return
+                    b_last_tap = now
+                    b_press_time = now
+                elif etype == Pager.EVENT_RELEASE:
+                    b_press_time = None
+                continue
+
             if etype != Pager.EVENT_PRESS:
                 continue
 
@@ -261,13 +298,7 @@ class Menu:
                     self._draw_menu()
 
                 elif label == "EXIT":
-                    p.clear(C_BG)
-                    p.draw_text_centered(100, "Goodbye.", C_DIM, 2)
-                    p.flip()
-                    p.beep(523, 100)
-                    p.beep(392, 100)
-                    p.beep(262, 200)
-                    time.sleep(0.8)
+                    self._do_exit(config)
                     return
 
                 elif callback is not None:
@@ -277,7 +308,3 @@ class Menu:
                     p.clear_input_events()
                     self._draw_menu()
 
-            elif btn == Pager.BTN_B:
-                # B at the main menu = move down one (treat as secondary nav)
-                # or just ignore — user uses UP/DOWN for nav, B for abort only during modules
-                pass

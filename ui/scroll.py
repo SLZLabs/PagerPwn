@@ -22,14 +22,16 @@ C_DIM     = Pager.GRAY
 C_STATUS  = Pager.rgb(10, 10, 10)
 
 # ── Layout ────────────────────────────────────────────────────────────────────
-HEADER_H  = 22
+HEADER_H  = 24
 STATUS_H  = 18
-LINE_H    = 14   # FONT_SMALL (1) = 7px tall; give 14px per line for readability
+FONT_SZ   = 2    # FONT_MEDIUM (2) = 10x14
+LINE_H    = 22   # 14px glyph + 8px gap
 LINES_Y   = HEADER_H + 2
-LINES_MAX = (222 - HEADER_H - STATUS_H - 4) // LINE_H  # ~12 lines
+LINES_MAX = (222 - HEADER_H - STATUS_H - 4) // LINE_H  # ~8 lines
 
 # Keywords that cause a line to be highlighted green
-_HIT_KEYWORDS = ("OPEN", "HASH", "AUTH", "SUCCESS", "CAPTURED", "CRED", "OK")
+_HIT_KEYWORDS = ("OPEN", "HASH", "AUTH", "SUCCESS", "CAPTURED", "CRED", "OK",
+                  "CAMERA", "PRINTER", "AD", "ESXI", "HA")
 
 
 def _line_color(line):
@@ -66,7 +68,7 @@ class ScrollViewer:
         for i, line in enumerate(visible):
             y = LINES_Y + i * LINE_H
             color = _line_color(line)
-            p.draw_text(4, y, str(line)[:72], color, 1)
+            p.draw_text(4, y + 2, str(line)[:38], color, FONT_SZ)
 
         # Scroll arrows
         if self.offset > 0:
@@ -80,7 +82,7 @@ class ScrollViewer:
         p.fill_rect(0, bar_y, 480, STATUS_H, C_STATUS)
         end_line = min(self.offset + LINES_MAX, total)
         pos = f"{self.offset + 1}-{end_line}/{total}"
-        p.draw_text(4, bar_y + 2, f"[UP/DN] SCROLL  [B] BACK  {pos}", C_DIM, 1)
+        p.draw_text(4, bar_y + 2, f"[UP/DN] SCROLL [B] BACK {pos}", C_DIM, 1)
 
         p.flip()
 

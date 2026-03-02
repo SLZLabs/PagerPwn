@@ -6,6 +6,7 @@ Module interface: run(config, ui_callback, stop_event) -> dict
 """
 
 import socket
+import time
 import threading
 
 PORT_PROFILES = {
@@ -17,6 +18,12 @@ PORT_PROFILES = {
     "ha":      [8123, 8124],
     "generic": [21, 22, 23, 80, 443, 445, 3389, 8080, 8443],
 }
+
+# Union of all classification-critical ports — used by recon sweep so every
+# host gets a fair shot at being classified regardless of its name/label.
+RECON_PORTS = sorted(set(
+    p for profile in PORT_PROFILES.values() for p in profile
+))
 
 # Keyword → profile mapping
 _PROFILE_KEYS = [
@@ -93,14 +100,24 @@ def run(config, ui_callback, stop_event=None):
         if stop_event and stop_event.is_set():
             break
 
-        ui_callback(f"Scanning {ip}", name[:22])
-        ports = _pick_profile(name)
+        ui_callback(f"Scanning {ip}", "Ports: [  ]")
+        ports = RECON_PORTS if config.get("RECON_MODE") else _pick_profile(name)
         open_ports = _scan_host(ip, ports, timeout)
         results[name] = {"ip": ip, "ports": open_ports}
 
         if open_ports:
-            ui_callback(f"{ip} OPEN", ", ".join(str(p) for p in open_ports[:6]))
+            # Build port string that fits within 36 char display limit
+            # "Ports: [" = 8 chars, "]" = 1 char, leaves 27 for port list
+            port_str = ""
+            for p in open_ports:
+                addition = f", {p}" if port_str else str(p)
+                if len(port_str) + len(addition) > 27:
+                    port_str += ".."
+                    break
+                port_str += addition
+            ui_callback(f"Scanning {ip}", f"Ports: [{port_str}]")
         else:
-            ui_callback(f"{ip}", "No open ports")
+            ui_callback(f"Scanning {ip}", "Ports: [none]")
+        time.sleep(0.8)
 
     return results

@@ -11,8 +11,8 @@ Menu:
   LLMNR LISTEN     LLMNR/NBT-NS poisoner + NTLMv2 hash capture
   JETDIRECT PROBE  HP printer PJL enumeration + LCD prank
   CAMERA PROBE     Reolink HTTP/RTSP credential check
+  CAM SNAPSHOT     Live camera view on Pager LCD
   mDNS HARVEST     Passive mDNS device catalog (zero active packets)
-  HA PROBE         Home Assistant unauthenticated API check
   EXFIL LOOT       Trigger LootOverSMB sync to home server
   VIEW LOOT        Browse captured loot files on-device
   QUIET MODE       Toggle passive-only mode
@@ -28,9 +28,6 @@ import os
 import sys
 import json
 import time
-import socket
-import urllib.request
-import urllib.error
 from datetime import datetime
 
 # ── Path setup ───────────────────────────────────────────────────────────────
@@ -51,11 +48,12 @@ def _try_import(name):
     except ImportError:
         return None
 
-arp_scan   = _try_import("arp_scan")
-llmnr      = _try_import("llmnr")
-jetdirect  = _try_import("jetdirect")
-rtsp_probe = _try_import("rtsp_probe")
-cam_snap   = _try_import("cam_snap")
+arp_scan     = _try_import("arp_scan")
+llmnr        = _try_import("llmnr")
+jetdirect    = _try_import("jetdirect")
+rtsp_probe   = _try_import("rtsp_probe")
+cam_snap     = _try_import("cam_snap")
+video_player = _try_import("video_player")
 
 # ── Config ───────────────────────────────────────────────────────────────────
 CONFIG = {
@@ -258,6 +256,7 @@ def run_recon_sweep(config, ui_callback, stop_event):
     ui_callback("[RECON] Port Scan", f"{len(targets)} host(s)")
     scan_config = dict(config)
     scan_config["TARGETS"] = targets
+    scan_config["RECON_MODE"] = True
     results["ports"] = port_scan.run(scan_config, ui_callback, stop_event)
 
     # Build DISCOVERED map from port scan results
@@ -269,9 +268,34 @@ def run_recon_sweep(config, ui_callback, stop_event):
     CONFIG["DISCOVERED"] = discovered
 
     exfil.write_json_loot(f"recon_{_ts()}.json", results, config["LOOT_DIR"])
-    type_summary = ", ".join(f"{k}:{len(v)}" for k, v in discovered.items())
-    ui_callback("RECON DONE", type_summary[:30] if type_summary else "No hosts")
-    time.sleep(1)
+
+    # Build summary lines for scroll viewer
+    total_hosts = len(arp_results)
+    summary = [
+        f"Hosts alive: {total_hosts}",
+        "",
+    ]
+    # Show discovered device types and their IPs
+    for dev_type, ips in sorted(discovered.items()):
+        if dev_type == "generic":
+            continue
+        summary.append(f"[{dev_type.upper()}] ({len(ips)})")
+        for ip in ips:
+            summary.append(f"  {ip}")
+    # Generic at the end
+    generic = discovered.get("generic", [])
+    if generic:
+        summary.append(f"[GENERIC] ({len(generic)})")
+        for ip in generic:
+            summary.append(f"  {ip}")
+    summary.append("")
+    summary.append(f"Saved to loot/recon_{_ts()}.json")
+
+    if _MENU:
+        ScrollViewer(_MENU.pager, "RECON COMPLETE", summary).run()
+    else:
+        ui_callback("RECON DONE", f"{total_hosts} hosts found")
+        time.sleep(2)
 
     CONFIG["_last_recon"] = results
     return results
@@ -359,6 +383,14 @@ def run_rtsp_probe(config, ui_callback, stop_event):
     result = rtsp_probe.run(cam_config, ui_callback, stop_event)
 
     if result and result.get("auth_success"):
+        # Stash working creds so cam_snap skips re-bruting
+        cred = result.get("cred", "")
+        if cred and ":" in cred and cred != "none (open)":
+            u, p = cred.split(":", 1)
+            CONFIG["CAM_USER"] = u
+            CONFIG["CAM_PASS"] = p
+        elif cred == "none (open)":
+            CONFIG["CAM_OPEN"] = True
         _save_and_trophy(
             "camera", "txt",
             json.dumps(result, indent=2),
@@ -398,6 +430,17 @@ def run_cam_snap(config, ui_callback, stop_event):
     return result
 
 
+def run_video_player(config, ui_callback, stop_event):
+    """Play PagerPwn splash animation on LCD."""
+    if video_player is None:
+        ui_callback("VIDEO module", "Module not found")
+        time.sleep(2)
+        return None
+
+    pager_ref = _MENU.pager if _MENU else None
+    return video_player.run(config, ui_callback, stop_event, pager=pager_ref)
+
+
 def run_mdns_harvest(config, ui_callback, stop_event):
     """Passive mDNS device catalog."""
     duration = 30
@@ -416,58 +459,6 @@ def run_mdns_harvest(config, ui_callback, stop_event):
 
     time.sleep(1)
     return result
-
-
-def run_ha_probe(config, ui_callback, stop_event):
-    """Home Assistant unauthenticated API check."""
-    ha_hosts = CONFIG.get("DISCOVERED", {}).get("ha", [])
-    ha_ip = ha_hosts[0] if ha_hosts else config.get("HA_IP", "")
-    if not ha_ip:
-        ui_callback("[HA PROBE]", "No HA found — run RECON")
-        time.sleep(2)
-        return None
-    ha_port = 8123
-    ui_callback("[HA PROBE]", f"{ha_ip}:{ha_port}")
-
-    # Connectivity check
-    try:
-        s = socket.socket()
-        s.settimeout(2)
-        s.connect((ha_ip, ha_port))
-        s.close()
-    except Exception:
-        ui_callback("HA PROBE", "Port closed / unreachable")
-        time.sleep(2)
-        return None
-
-    # Try unauthenticated REST API
-    try:
-        req = urllib.request.Request(
-            f"http://{ha_ip}:{ha_port}/api/",
-            headers={"Content-Type": "application/json"},
-        )
-        resp = urllib.request.urlopen(req, timeout=3)
-        body = resp.read().decode(errors="replace")
-
-        ui_callback("[HA] OPEN", "No auth required!")
-        result = {"auth": "none", "ip": ha_ip, "response": body[:500]}
-        _save_and_trophy(
-            "ha", "txt",
-            json.dumps(result, indent=2),
-            ("HA NO-AUTH", "API accessible", ha_ip),
-        )
-        return result
-
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            ui_callback("[HA] Auth required", "Token needed — not default")
-        else:
-            ui_callback("[HA] HTTP error", f"Code {e.code}")
-    except Exception as e:
-        ui_callback("[HA] Error", str(e)[:30])
-
-    time.sleep(2)
-    return None
 
 
 def run_exfil(config, ui_callback, stop_event):
@@ -497,6 +488,14 @@ def run_view_loot(config, ui_callback, stop_event):
 # ── Splash ────────────────────────────────────────────────────────────────────
 
 def _splash(p):
+    """Animated splash — plays the PPV video intro, falls back to static."""
+    if video_player:
+        result = video_player.run(
+            {}, lambda *a: None, None, pager=p,
+        )
+        if result and result.get("frames_played", 0) > 0:
+            return
+    # Fallback if video missing or module not loaded
     p.clear(Pager.BLACK)
     p.draw_text_centered(40, "PAGERPWN", Pager.MAGENTA, 4)
     p.draw_text_centered(105, "v1.0", Pager.CYAN, 3)
@@ -552,7 +551,6 @@ def main():
             ("CAMERA PROBE",        run_rtsp_probe),
             ("CAM SNAPSHOT",        run_cam_snap),
             ("mDNS HARVEST",        run_mdns_harvest),
-            ("HA PROBE",            run_ha_probe),
             ("EXFIL LOOT",          run_exfil),
             ("VIEW LOOT",           run_view_loot),
             ("QUIET MODE [OFF]",    None),
