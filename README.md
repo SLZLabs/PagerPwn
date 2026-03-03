@@ -15,6 +15,7 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **Printer exploitation** — HP JetDirect PJL enumeration + LCD hijack
 - **Live camera viewer** — streams JPEG snapshots directly to the pager screen
 - **mDNS harvesting** — passive device discovery (zero packets sent)
+- **WiFi scanning** — passive 802.11 monitor-mode scanner with channel hopping (2.4 + 5GHz)
 - **Animated splash intro** — glitch/matrix rain video plays on boot (skippable)
 - **SMB exfiltration** — syncs captured loot to a remote share
 - **On-device loot browser** — review captures without SSH
@@ -70,9 +71,16 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **CAMERA PROBE** | IP camera HTTP API + RTSP credential brute force using wordlists |
 | **CAM SNAPSHOT** | Live camera JPEG viewer on the pager LCD (auto-refresh) |
 | **mDNS HARVEST** | Passive mDNS listener — catalogs devices without sending any packets |
+| **WIFI SCAN** | Passive 802.11 scanner — discovers APs, clients, and probe requests via monitor mode (2.4GHz) |
 | **EXFIL LOOT** | Syncs all captured loot to a remote SMB share |
 | **VIEW LOOT** | Browse and review captured files on-device |
 | **QUIET MODE** | Toggle passive-only (disables LLMNR poisoning + active scans) |
+
+### WiFi Scan Notes
+
+The Pager has two radios: `phy0` (2.4GHz, MediaTek MT7628) and `phy1` (dual-band, MediaTek MT7915). Only `phy0` exposes monitor mode to userspace — `phy1` relies on the `pineapd` firmware daemon for monitor functionality, which isn't available while PagerPwn is running.
+
+WIFI SCAN automatically creates a temporary monitor interface (`ppwn0mon`) on `phy0` at launch and tears it down on exit. This means scanning is **2.4GHz only** (channels 1-11). Most consumer APs broadcast on 2.4GHz anyway, so coverage is solid for general recon.
 
 ## Auto-Targeting
 
@@ -132,6 +140,7 @@ All captures saved to `/mmc/root/loot/pagerpwn/` (configurable).
 | `camera_<ts>.txt` | Camera auth brute force results |
 | `cam_snap_<ts>.txt` | Camera snapshot session stats |
 | `mdns_<ts>.json` | Passive mDNS device catalog |
+| `wifi_scan_<ts>.json` | Discovered APs, clients, and probe requests |
 
 ## File Structure
 
@@ -157,6 +166,7 @@ PagerPwn/
 │   ├── rtsp_probe.py     # camera HTTP/RTSP credential brute force
 │   ├── cam_snap.py       # live camera snapshot viewer
 │   ├── mdns_harvest.py   # passive mDNS device catalog
+│   ├── wifi_scan.py      # passive 802.11 AP + client scanner
 │   ├── video_player.py   # PPV splash video player
 │   └── exfil.py          # loot writer + SMB exfil trigger
 ├── tools/

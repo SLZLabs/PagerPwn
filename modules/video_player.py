@@ -104,6 +104,10 @@ def run(config, ui_callback, stop_event, pager=None):
             if remaining > 0:
                 time.sleep(remaining)
 
+    # Hold the last frame so it doesn't vanish instantly
+    if stats["frames_played"] > 0:
+        time.sleep(2)
+
     # Clean up temp file
     try:
         os.remove(FRAME_TMP)

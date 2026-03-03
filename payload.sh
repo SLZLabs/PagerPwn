@@ -108,7 +108,7 @@ if command -v LOG >/dev/null 2>&1 && command -v WAIT_FOR_INPUT >/dev/null 2>&1; 
     LOG ""
     LOG "  RECON SWEEP    LLMNR LISTEN"
     LOG "  JETDIRECT      CAMERA PROBE"
-    LOG "  mDNS HARVEST   HA PROBE"
+    LOG "  mDNS HARVEST   WIFI SCAN"
     LOG "  EXFIL LOOT     VIEW LOOT"
     LOG ""
     LOG "green" "  GREEN = Launch"

@@ -13,6 +13,7 @@ Menu:
   CAMERA PROBE     Reolink HTTP/RTSP credential check
   CAM SNAPSHOT     Live camera view on Pager LCD
   mDNS HARVEST     Passive mDNS device catalog (zero active packets)
+  WIFI SCAN        Passive 802.11 scanner (APs + client probes)
   EXFIL LOOT       Trigger LootOverSMB sync to home server
   VIEW LOOT        Browse captured loot files on-device
   QUIET MODE       Toggle passive-only mode
@@ -54,6 +55,7 @@ jetdirect    = _try_import("jetdirect")
 rtsp_probe   = _try_import("rtsp_probe")
 cam_snap     = _try_import("cam_snap")
 video_player = _try_import("video_player")
+wifi_scan     = _try_import("wifi_scan")
 
 # ── Config ───────────────────────────────────────────────────────────────────
 CONFIG = {
@@ -461,6 +463,30 @@ def run_mdns_harvest(config, ui_callback, stop_event):
     return result
 
 
+def run_wifi_scan(config, ui_callback, stop_event):
+    """Passive WiFi scanner — sniffs 802.11 frames from monitor interface."""
+    if wifi_scan is None:
+        ui_callback("WIFI SCAN module", "Module not found")
+        time.sleep(2)
+        return None
+
+    pager_ref = _MENU.pager if _MENU else None
+    result = wifi_scan.run(config, ui_callback, stop_event, pager=pager_ref)
+
+    if result and result.get("aps"):
+        ap_count = len(result["aps"])
+        cl_count = len(result.get("clients", {}))
+        dur = result.get("duration", 0)
+        if _MENU:
+            _MENU.draw_trophy(
+                f"{ap_count} ACCESS POINTS",
+                f"{cl_count} clients probing",
+                f"Scanned {dur}s",
+            )
+
+    return result
+
+
 def run_exfil(config, ui_callback, stop_event):
     """Trigger LootOverSMB sync."""
     exfil.run(config, ui_callback, stop_event)
@@ -551,6 +577,7 @@ def main():
             ("CAMERA PROBE",        run_rtsp_probe),
             ("CAM SNAPSHOT",        run_cam_snap),
             ("mDNS HARVEST",        run_mdns_harvest),
+            ("WIFI SCAN",           run_wifi_scan),
             ("EXFIL LOOT",          run_exfil),
             ("VIEW LOOT",           run_view_loot),
             ("QUIET MODE [OFF]",    None),
