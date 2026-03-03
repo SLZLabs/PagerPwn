@@ -10,7 +10,7 @@ Menu:
   RECON SWEEP      ARP scan + port fingerprint all known LAN targets
   LLMNR LISTEN     LLMNR/NBT-NS poisoner + NTLMv2 hash capture
   JETDIRECT PROBE  HP printer PJL enumeration + LCD prank
-  CAMERA PROBE     Reolink HTTP/RTSP credential check
+  CAMERA PROBE     Multi-manufacturer camera credential check
   CAM SNAPSHOT     Live camera view on Pager LCD
   mDNS HARVEST     Passive mDNS device catalog (zero active packets)
   WIFI SCAN        Passive 802.11 scanner (APs + client probes)
@@ -52,7 +52,7 @@ def _try_import(name):
 arp_scan     = _try_import("arp_scan")
 llmnr        = _try_import("llmnr")
 jetdirect    = _try_import("jetdirect")
-rtsp_probe   = _try_import("rtsp_probe")
+cam_probe    = _try_import("cam_probe")
 cam_snap     = _try_import("cam_snap")
 video_player = _try_import("video_player")
 wifi_scan     = _try_import("wifi_scan")
@@ -365,10 +365,10 @@ def run_jetdirect(config, ui_callback, stop_event):
     return result
 
 
-def run_rtsp_probe(config, ui_callback, stop_event):
-    """Reolink camera HTTP/RTSP credential check."""
-    if rtsp_probe is None:
-        ui_callback("RTSP module", "Opus module pending")
+def run_cam_probe(config, ui_callback, stop_event):
+    """Multi-manufacturer camera HTTP/RTSP credential check."""
+    if cam_probe is None:
+        ui_callback("Camera module", "Opus module pending")
         time.sleep(2)
         return None
 
@@ -382,10 +382,10 @@ def run_rtsp_probe(config, ui_callback, stop_event):
     cam_config = dict(config)
     cam_config["TARGETS"] = {"Camera": target}
     ui_callback("[CAMERA]", f"Probing {target}...")
-    result = rtsp_probe.run(cam_config, ui_callback, stop_event)
+    result = cam_probe.run(cam_config, ui_callback, stop_event)
 
     if result and result.get("auth_success"):
-        # Stash working creds so cam_snap skips re-bruting
+        # Stash working creds + manufacturer so cam_snap skips re-bruting
         cred = result.get("cred", "")
         if cred and ":" in cred and cred != "none (open)":
             u, p = cred.split(":", 1)
@@ -393,10 +393,11 @@ def run_rtsp_probe(config, ui_callback, stop_event):
             CONFIG["CAM_PASS"] = p
         elif cred == "none (open)":
             CONFIG["CAM_OPEN"] = True
+        CONFIG["CAM_MFG"] = result.get("manufacturer", "generic")
         _save_and_trophy(
             "camera", "txt",
             json.dumps(result, indent=2),
-            ("CAMERA AUTH OK", result.get("cred", ""), f"Camera {target}"),
+            ("CAMERA AUTH OK", result.get("cred", ""), f"{result.get('manufacturer', '').upper()} {target}"),
         )
 
     return result
@@ -418,6 +419,7 @@ def run_cam_snap(config, ui_callback, stop_event):
 
     snap_config = dict(config)
     snap_config["CAMERA_IP"] = target
+    snap_config["CAM_MFG"] = CONFIG.get("CAM_MFG", "generic")
     ui_callback("[CAM SNAP]", f"Starting {target}...")
     pager_ref = _MENU.pager if _MENU else None
     result = cam_snap.run(snap_config, ui_callback, stop_event, pager=pager_ref)
@@ -574,7 +576,7 @@ def main():
             ("RECON SWEEP",         run_recon_sweep),
             ("LLMNR LISTEN",        run_llmnr_listen),
             ("JETDIRECT PROBE",     run_jetdirect),
-            ("CAMERA PROBE",        run_rtsp_probe),
+            ("CAMERA PROBE",        run_cam_probe),
             ("CAM SNAPSHOT",        run_cam_snap),
             ("mDNS HARVEST",        run_mdns_harvest),
             ("WIFI SCAN",           run_wifi_scan),

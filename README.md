@@ -11,7 +11,7 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **Auto-detect networking** — picks up `wlan0cli` or `eth0` at launch, no config needed
 - **ARP + port scan** — full /24 subnet sweep with automatic device classification
 - **LLMNR/NBT-NS poisoning** — captures NTLMv2 hashes (hashcat -m 5600 ready)
-- **Credential brute force** — camera HTTP/RTSP login with customizable wordlists
+- **Credential brute force** — multi-manufacturer camera login (Reolink, Hikvision, Dahua, Generic) with auto-fingerprinting
 - **Printer exploitation** — HP JetDirect PJL enumeration + LCD hijack
 - **Live camera viewer** — streams JPEG snapshots directly to the pager screen
 - **mDNS harvesting** — passive device discovery (zero packets sent)
@@ -68,8 +68,8 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **RECON SWEEP** | ARP sweep + port scan all live hosts, classifies devices automatically |
 | **LLMNR LISTEN** | LLMNR/NBT-NS poisoner with mini SMB server — captures NTLMv2 hashes |
 | **JETDIRECT PROBE** | HP printer PJL enumeration, config dump, filesystem listing, LCD prank |
-| **CAMERA PROBE** | IP camera HTTP API + RTSP credential brute force using wordlists |
-| **CAM SNAPSHOT** | Live camera JPEG viewer on the pager LCD (auto-refresh) |
+| **CAMERA PROBE** | Multi-manufacturer camera fingerprint + credential brute force (Reolink, Hikvision, Dahua, Generic) |
+| **CAM SNAPSHOT** | Live camera JPEG viewer on the pager LCD — auto-selects snapshot API per manufacturer |
 | **mDNS HARVEST** | Passive mDNS listener — catalogs devices without sending any packets |
 | **WIFI SCAN** | Passive 802.11 scanner — discovers APs, clients, and probe requests via monitor mode (2.4GHz) |
 | **EXFIL LOOT** | Syncs all captured loot to a remote SMB share |
@@ -81,6 +81,19 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 The Pager has two radios: `phy0` (2.4GHz, MediaTek MT7628) and `phy1` (dual-band, MediaTek MT7915). Only `phy0` exposes monitor mode to userspace — `phy1` relies on the `pineapd` firmware daemon for monitor functionality, which isn't available while PagerPwn is running.
 
 WIFI SCAN automatically creates a temporary monitor interface (`ppwn0mon`) on `phy0` at launch and tears it down on exit. This means scanning is **2.4GHz only** (channels 1-11). Most consumer APs broadcast on 2.4GHz anyway, so coverage is solid for general recon.
+
+### Camera Manufacturer Support
+
+CAMERA PROBE auto-fingerprints the camera brand before brute-forcing, so it uses the right API for each manufacturer:
+
+| Manufacturer | Auth Method | Snapshot Endpoint |
+|---|---|---|
+| **Reolink** | Token-based JSON API (`/api.cgi?cmd=Login`) | `/api.cgi?cmd=Snap&channel=0&token=T` |
+| **Hikvision** | HTTP Digest | `/ISAPI/Streaming/channels/101/picture` |
+| **Dahua** | HTTP Digest | `/cgi-bin/snapshot.cgi?channel=1` |
+| **Generic** | HTTP Basic | `/snap.jpg`, `/image.jpg`, `/capture`, etc. |
+
+Fingerprinting hits port 80/443 and checks response headers + body for manufacturer markers (no auth needed). Once identified, the correct driver is used for both credential brute force and snapshot capture. CAM SNAPSHOT inherits the manufacturer from CAMERA PROBE so it doesn't need to re-fingerprint.
 
 ## Auto-Targeting
 
@@ -163,8 +176,8 @@ PagerPwn/
 │   ├── port_scan.py      # threaded port scanner + device classifier
 │   ├── llmnr.py          # LLMNR/NBT-NS poisoner + NTLMv2 capture
 │   ├── jetdirect.py      # HP JetDirect PJL exploitation
-│   ├── rtsp_probe.py     # camera HTTP/RTSP credential brute force
-│   ├── cam_snap.py       # live camera snapshot viewer
+│   ├── cam_probe.py      # multi-manufacturer camera fingerprint + credential brute force
+│   ├── cam_snap.py       # multi-manufacturer live camera snapshot viewer
 │   ├── mdns_harvest.py   # passive mDNS device catalog
 │   ├── wifi_scan.py      # passive 802.11 AP + client scanner
 │   ├── video_player.py   # PPV splash video player
