@@ -106,10 +106,14 @@ if command -v LOG >/dev/null 2>&1 && command -v WAIT_FOR_INPUT >/dev/null 2>&1; 
     LOG "green" "   Network Recon Toolkit"
     LOG "green" "============================="
     LOG ""
-    LOG "  RECON SWEEP    LLMNR LISTEN"
-    LOG "  JETDIRECT      CAMERA PROBE"
-    LOG "  mDNS HARVEST   WIFI SCAN"
-    LOG "  EXFIL LOOT     VIEW LOOT"
+    LOG "green" ' ____  ____  ____  ____  ____'
+    LOG "green" '||P ||||A ||||G ||||E ||||R ||'
+    LOG "green" '||__||||__||||__||||__||||__||'
+    LOG "green" '|/__\||/__\||/__\||/__\||/__\|'
+    LOG "green" ' ____  ____  ____'
+    LOG "green" '||P ||||W ||||N ||'
+    LOG "green" '||__||||__||||__||'
+    LOG "green" '|/__\||/__\||/__\|'
     LOG ""
     LOG "green" "  GREEN = Launch"
     LOG "red"   "  RED   = Cancel"

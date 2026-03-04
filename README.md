@@ -20,6 +20,7 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **Animated splash intro** — glitch/matrix rain video plays on boot (skippable)
 - **SMB exfiltration** — syncs captured loot to a remote share
 - **On-device loot browser** — review captures without SSH
+- **Quick launch** — launch PagerGotchi or Pager Bjorn directly from the PagerPwn menu
 
 ## Quick Start
 
@@ -79,6 +80,8 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **EXFIL LOOT** | Syncs all captured loot to a remote SMB share |
 | **VIEW LOOT** | Browse and review captured files on-device |
 | **QUIET MODE** | Toggle passive-only (disables LLMNR poisoning + active scans) |
+| **QUICK LAUNCH: PAGERGOTCHI** | Launch PagerGotchi (by Brainphreak) directly from PagerPwn |
+| **QUICK LAUNCH: PAGER BJORN** | Launch Pager Bjorn directly from PagerPwn |
 
 ### WiFi Scan / Deauth Notes
 
@@ -193,7 +196,9 @@ PagerPwn/
 │   ├── wifi_scan.py      # passive 802.11 AP + client scanner
 │   ├── wifi_deauth.py    # 802.11 deauth attack with target picker
 │   ├── video_player.py   # PPV splash video player
-│   └── exfil.py          # loot writer + SMB exfil trigger
+│   ├── exfil.py          # loot writer + SMB exfil trigger
+│   ├── pagergotchi.py    # quick launcher for PagerGotchi
+│   └── pager_bjorn.py    # quick launcher for Pager Bjorn
 ├── tools/
 │   └── gen_splash_video.py  # generates splash.ppv + splash.mpg
 └── ui/

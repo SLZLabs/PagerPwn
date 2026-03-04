@@ -18,6 +18,8 @@ Menu:
   EXFIL LOOT       Trigger LootOverSMB sync to home server
   VIEW LOOT        Browse captured loot files on-device
   QUIET MODE       Toggle passive-only mode
+  PAGERGOTCHI      Quick launch PagerGotchi (by Brainphreak)
+  PAGER BJORN      Quick launch Pager Bjorn
   EXIT
 
 Controls:
@@ -58,6 +60,8 @@ cam_snap     = _try_import("cam_snap")
 video_player = _try_import("video_player")
 wifi_scan     = _try_import("wifi_scan")
 wifi_deauth   = _try_import("wifi_deauth")
+pagergotchi   = _try_import("pagergotchi")
+pager_bjorn   = _try_import("pager_bjorn")
 
 # ── Config ───────────────────────────────────────────────────────────────────
 CONFIG = {
@@ -582,6 +586,28 @@ def run_wifi_deauth(config, ui_callback, stop_event):
     return result
 
 
+def run_pagergotchi(config, ui_callback, stop_event):
+    """Quick launch PagerGotchi (by Brainphreak)."""
+    if pagergotchi is None:
+        ui_callback("PAGERGOTCHI", "Module not found")
+        time.sleep(2)
+        return None
+
+    pager_ref = _MENU.pager if _MENU else None
+    return pagergotchi.run(config, ui_callback, stop_event, pager=pager_ref)
+
+
+def run_pager_bjorn(config, ui_callback, stop_event):
+    """Quick launch Pager Bjorn."""
+    if pager_bjorn is None:
+        ui_callback("PAGER BJORN", "Module not found")
+        time.sleep(2)
+        return None
+
+    pager_ref = _MENU.pager if _MENU else None
+    return pager_bjorn.run(config, ui_callback, stop_event, pager=pager_ref)
+
+
 def run_exfil(config, ui_callback, stop_event):
     """Trigger LootOverSMB sync."""
     exfil.run(config, ui_callback, stop_event)
@@ -677,6 +703,8 @@ def main():
             ("EXFIL LOOT",          run_exfil),
             ("VIEW LOOT",           run_view_loot),
             ("QUIET MODE [OFF]",    None),
+            ("QUICK LAUNCH: PAGERGOTCHI", run_pagergotchi),
+            ("QUICK LAUNCH: PAGER BJORN", run_pager_bjorn),
             ("EXIT",                None),
         ]
 
