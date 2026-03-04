@@ -129,6 +129,25 @@ if command -v LOG >/dev/null 2>&1 && command -v WAIT_FOR_INPUT >/dev/null 2>&1; 
     esac
 fi
 
+# ── Network check — bail early if no usable interface ────────────────────────
+has_network() {
+    for iface in wlan0cli eth0; do
+        ip -4 -o addr show "$iface" 2>/dev/null | grep -q "inet " && return 0
+    done
+    return 1
+}
+
+if ! has_network; then
+    # Wait a few seconds in case interface is still coming up
+    sleep 3
+    if ! has_network; then
+        log_msg "red" "NO NETWORK — wlan0cli and eth0 both down"
+        log_msg "Connect the pager to a network first."
+        command -v WAIT_FOR_INPUT >/dev/null 2>&1 && WAIT_FOR_INPUT >/dev/null 2>&1
+        exit 1
+    fi
+fi
+
 # ── Stop pineapplepager (safe — user acknowledged or running from SSH) ────────
 /etc/init.d/pineapplepager stop 2>/dev/null
 sleep 0.5
