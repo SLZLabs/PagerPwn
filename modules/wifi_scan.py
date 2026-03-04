@@ -18,7 +18,6 @@ Module interface: run(config, ui_callback, stop_event, pager=None) -> dict
 """
 
 import os
-import json
 import struct
 import socket
 import subprocess
@@ -469,7 +468,7 @@ def run(config, ui_callback, stop_event, pager=None):
     loot_dir = config.get("LOOT_DIR", "/mmc/root/loot/pagerpwn")
     os.makedirs(loot_dir, exist_ok=True)
 
-    # Convert sets to lists for JSON serialization
+    # Build loot dicts for return value
     loot_aps = {}
     for bssid, info in aps.items():
         loot_aps[bssid] = {k: v for k, v in info.items()}
@@ -482,19 +481,41 @@ def run(config, ui_callback, stop_event, pager=None):
             "signal": info["signal"],
         }
 
-    loot_data = {
-        "scan_time": datetime.now().isoformat(),
-        "duration_sec": duration,
-        "interface": iface,
-        "aps": loot_aps,
-        "clients": loot_clients,
-    }
+    # Save as plaintext
+    sorted_aps = sorted(loot_aps.items(), key=lambda x: x[1].get("signal", -100), reverse=True)
+    loot_lines = [
+        "WIFI SCAN REPORT",
+        "================",
+        f"Date:       {datetime.now().isoformat()}",
+        f"Duration:   {duration}s",
+        f"Interface:  {iface}",
+        f"APs:        {len(loot_aps)}",
+        f"Clients:    {len(loot_clients)}",
+        "",
+        "ACCESS POINTS",
+        "-------------",
+    ]
+    for bssid, info in sorted_aps:
+        ssid = info.get("ssid") or "<hidden>"
+        ch = info.get("channel", "?")
+        sig = info.get("signal", "?")
+        enc = info.get("enc", "?")
+        loot_lines.append(f"  {bssid}  {ssid:<24s} ch{ch:<3} {sig}dBm  {enc}")
+
+    if loot_clients:
+        loot_lines.append("")
+        loot_lines.append("CLIENTS")
+        loot_lines.append("-------")
+        for mac, info in sorted(loot_clients.items()):
+            sig = info.get("signal", "?")
+            probes = ", ".join(info.get("probes", [])) or "(none)"
+            loot_lines.append(f"  {mac}  {sig}dBm  probes: {probes}")
 
     ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    loot_path = os.path.join(loot_dir, f"wifi_scan_{ts}.json")
+    loot_path = os.path.join(loot_dir, f"wifi_scan_{ts}.txt")
     try:
         with open(loot_path, "w") as f:
-            json.dump(loot_data, f, indent=2)
+            f.write("\n".join(loot_lines) + "\n")
     except Exception:
         pass
 

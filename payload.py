@@ -14,6 +14,7 @@ Menu:
   CAM SNAPSHOT     Live camera view on Pager LCD
   mDNS HARVEST     Passive mDNS device catalog (zero active packets)
   WIFI SCAN        Passive 802.11 scanner (APs + client probes)
+  WIFI DEAUTH      802.11 deauth attack with interactive target picker
   EXFIL LOOT       Trigger LootOverSMB sync to home server
   VIEW LOOT        Browse captured loot files on-device
   QUIET MODE       Toggle passive-only mode
@@ -56,6 +57,7 @@ cam_probe    = _try_import("cam_probe")
 cam_snap     = _try_import("cam_snap")
 video_player = _try_import("video_player")
 wifi_scan     = _try_import("wifi_scan")
+wifi_deauth   = _try_import("wifi_deauth")
 
 # ── Config ───────────────────────────────────────────────────────────────────
 CONFIG = {
@@ -269,29 +271,65 @@ def run_recon_sweep(config, ui_callback, stop_event):
         discovered.setdefault(dev_type, []).append(ip)
     CONFIG["DISCOVERED"] = discovered
 
-    exfil.write_json_loot(f"recon_{_ts()}.json", results, config["LOOT_DIR"])
+    # Save recon loot as plaintext
+    total_hosts = len(arp_results)
+    loot_lines = [
+        "RECON SWEEP REPORT",
+        "==================",
+        f"Date:       {datetime.now().isoformat()}",
+        f"Subnet:     {config['SUBNET']}.0/24",
+        f"Hosts alive: {total_hosts}",
+        "",
+    ]
+
+    # ARP results
+    if arp_results:
+        loot_lines.append("ARP HOSTS")
+        loot_lines.append("---------")
+        for ip, info in sorted(arp_results.items()):
+            mac = info if isinstance(info, str) else info.get("mac", "?")
+            loot_lines.append(f"  {ip:<16s} {mac}")
+        loot_lines.append("")
+
+    # Port scan results by device type
+    for dev_type, ips in sorted(discovered.items()):
+        if dev_type == "generic":
+            continue
+        loot_lines.append(f"[{dev_type.upper()}] ({len(ips)})")
+        for ip in ips:
+            ports_info = results.get("ports", {}).get(ip, {})
+            open_ports = ports_info.get("ports", [])
+            port_str = ", ".join(str(p) for p in open_ports) if open_ports else "none"
+            loot_lines.append(f"  {ip:<16s} ports: {port_str}")
+    generic = discovered.get("generic", [])
+    if generic:
+        loot_lines.append(f"[GENERIC] ({len(generic)})")
+        for ip in generic:
+            ports_info = results.get("ports", {}).get(ip, {})
+            open_ports = ports_info.get("ports", [])
+            port_str = ", ".join(str(p) for p in open_ports) if open_ports else "none"
+            loot_lines.append(f"  {ip:<16s} ports: {port_str}")
+
+    recon_ts = _ts()
+    exfil.write_loot(f"recon_{recon_ts}.txt", "\n".join(loot_lines), config["LOOT_DIR"])
 
     # Build summary lines for scroll viewer
-    total_hosts = len(arp_results)
     summary = [
         f"Hosts alive: {total_hosts}",
         "",
     ]
-    # Show discovered device types and their IPs
     for dev_type, ips in sorted(discovered.items()):
         if dev_type == "generic":
             continue
         summary.append(f"[{dev_type.upper()}] ({len(ips)})")
         for ip in ips:
             summary.append(f"  {ip}")
-    # Generic at the end
-    generic = discovered.get("generic", [])
     if generic:
         summary.append(f"[GENERIC] ({len(generic)})")
         for ip in generic:
             summary.append(f"  {ip}")
     summary.append("")
-    summary.append(f"Saved to loot/recon_{_ts()}.json")
+    summary.append(f"Saved to loot/recon_{recon_ts}.txt")
 
     if _MENU:
         ScrollViewer(_MENU.pager, "RECON COMPLETE", summary).run()
@@ -385,20 +423,24 @@ def run_cam_probe(config, ui_callback, stop_event):
     result = cam_probe.run(cam_config, ui_callback, stop_event)
 
     if result and result.get("auth_success"):
-        # Stash working creds + manufacturer so cam_snap skips re-bruting
         cred = result.get("cred", "")
         if cred and ":" in cred and cred != "none (open)":
+            # Real login found — stash creds so cam_snap skips re-bruting
             u, p = cred.split(":", 1)
             CONFIG["CAM_USER"] = u
             CONFIG["CAM_PASS"] = p
-        elif cred == "none (open)":
-            CONFIG["CAM_OPEN"] = True
-        CONFIG["CAM_MFG"] = result.get("manufacturer", "generic")
-        _save_and_trophy(
-            "camera", "txt",
-            json.dumps(result, indent=2),
-            ("CAMERA AUTH OK", result.get("cred", ""), f"{result.get('manufacturer', '').upper()} {target}"),
-        )
+            CONFIG["CAM_MFG"] = result.get("manufacturer", "generic")
+            _save_and_trophy(
+                "camera", "txt",
+                json.dumps(result, indent=2),
+                ("CAMERA AUTH OK", cred, f"{result.get('manufacturer', '').upper()} {target}"),
+            )
+        else:
+            # RTSP open but no actual login creds — not a real capture
+            CONFIG["CAM_MFG"] = result.get("manufacturer", "generic")
+            ui_callback("[CAMERA]", "Unable to Login")
+            ui_callback("[CAMERA]", "No Logins Found")
+            time.sleep(2)
 
     return result
 
@@ -452,10 +494,22 @@ def run_mdns_harvest(config, ui_callback, stop_event):
     result = mdns_harvest.run(config, ui_callback, stop_event, duration=duration)
 
     if result:
-        serialisable = {ip: list(names) for ip, names in result.items()}
-        exfil.write_json_loot(
-            f"mdns_{_ts()}.json",
-            serialisable,
+        mdns_lines = [
+            "mDNS HARVEST REPORT",
+            "====================",
+            f"Date:       {datetime.now().isoformat()}",
+            f"Duration:   {duration}s",
+            f"Devices:    {len(result)}",
+            "",
+        ]
+        for ip, names in sorted(result.items()):
+            name_list = list(names) if not isinstance(names, list) else names
+            mdns_lines.append(f"  {ip}")
+            for name in sorted(name_list):
+                mdns_lines.append(f"    - {name}")
+        exfil.write_loot(
+            f"mdns_{_ts()}.txt",
+            "\n".join(mdns_lines),
             config["LOOT_DIR"],
         )
         ui_callback(f"mDNS: {len(result)} device(s)", "Saved to loot")
@@ -485,6 +539,45 @@ def run_wifi_scan(config, ui_callback, stop_event):
                 f"{cl_count} clients probing",
                 f"Scanned {dur}s",
             )
+
+    return result
+
+
+def run_wifi_deauth(config, ui_callback, stop_event):
+    """WiFi deauthentication attack — scan, pick target, blast deauth frames."""
+    if wifi_deauth is None:
+        ui_callback("WIFI DEAUTH module", "Module not found")
+        time.sleep(2)
+        return None
+
+    pager_ref = _MENU.pager if _MENU else None
+    result = wifi_deauth.run(config, ui_callback, stop_event, pager=pager_ref)
+
+    if result and result.get("packets_sent") and _MENU:
+        pkts = result["packets_sent"]
+        dur = result.get("duration", 0)
+        ssid = result.get("target_ssid") or result.get("target_bssid", "?")
+        client = result.get("target_client") or "ALL"
+        p = _MENU.pager
+        p.clear(Pager.BLACK)
+        p.fill_rect(0, 0, 480, 22, Pager.rgb(180, 0, 0))
+        p.draw_text(6, 3, "DEAUTH COMPLETE", Pager.WHITE, 2)
+        p.draw_text_centered(40, ssid[:24], Pager.CYAN, 2)
+        p.draw_text_centered(70, f"{pkts} packets sent", Pager.WHITE, 2)
+        p.draw_text_centered(100, f"Client: {client[:17]}", Pager.YELLOW, 2)
+        p.draw_text_centered(130, f"Duration: {dur}s", Pager.GRAY, 2)
+        p.draw_text_centered(175, "[A] CONTINUE", Pager.GREEN, 2)
+        p.flip()
+        p.beep(600, 80)
+        p.beep(400, 120)
+        p.clear_input_events()
+        while True:
+            event = p.get_input_event()
+            if event:
+                btn, etype, _ = event
+                if btn == Pager.BTN_A and etype == Pager.EVENT_PRESS:
+                    break
+            time.sleep(0.03)
 
     return result
 
@@ -580,6 +673,7 @@ def main():
             ("CAM SNAPSHOT",        run_cam_snap),
             ("mDNS HARVEST",        run_mdns_harvest),
             ("WIFI SCAN",           run_wifi_scan),
+            ("WIFI DEAUTH",         run_wifi_deauth),
             ("EXFIL LOOT",          run_exfil),
             ("VIEW LOOT",           run_view_loot),
             ("QUIET MODE [OFF]",    None),

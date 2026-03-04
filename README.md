@@ -15,7 +15,8 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **Printer exploitation** — HP JetDirect PJL enumeration + LCD hijack
 - **Live camera viewer** — streams JPEG snapshots directly to the pager screen
 - **mDNS harvesting** — passive device discovery (zero packets sent)
-- **WiFi scanning** — passive 802.11 monitor-mode scanner with channel hopping (2.4 + 5GHz)
+- **WiFi scanning** — passive 802.11 monitor-mode scanner with channel hopping (2.4GHz)
+- **WiFi deauth** — targeted or broadcast 802.11 deauthentication attacks with interactive target picker
 - **Animated splash intro** — glitch/matrix rain video plays on boot (skippable)
 - **SMB exfiltration** — syncs captured loot to a remote share
 - **On-device loot browser** — review captures without SSH
@@ -57,9 +58,11 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 
 | Button | Action |
 |--------|--------|
-| A | Move cursor / cycle selection |
-| B | Select / execute |
-| Hold B (1.5s) | Abort running module / back |
+| UP / DOWN | Move cursor / scroll |
+| A | Select / execute |
+| B | Back / abort |
+| Hold B (1.5s) | Abort running module |
+| Double-tap B | Exit from main menu |
 
 ## Modules
 
@@ -72,15 +75,22 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **CAM SNAPSHOT** | Live camera JPEG viewer on the pager LCD — auto-selects snapshot API per manufacturer |
 | **mDNS HARVEST** | Passive mDNS listener — catalogs devices without sending any packets |
 | **WIFI SCAN** | Passive 802.11 scanner — discovers APs, clients, and probe requests via monitor mode (2.4GHz) |
+| **WIFI DEAUTH** | Active 802.11 deauthentication — scan, pick an AP and client, then blast deauth frames |
 | **EXFIL LOOT** | Syncs all captured loot to a remote SMB share |
 | **VIEW LOOT** | Browse and review captured files on-device |
 | **QUIET MODE** | Toggle passive-only (disables LLMNR poisoning + active scans) |
 
-### WiFi Scan Notes
+### WiFi Scan / Deauth Notes
 
 The Pager has two radios: `phy0` (2.4GHz, MediaTek MT7628) and `phy1` (dual-band, MediaTek MT7915). Only `phy0` exposes monitor mode to userspace — `phy1` relies on the `pineapd` firmware daemon for monitor functionality, which isn't available while PagerPwn is running.
 
-WIFI SCAN automatically creates a temporary monitor interface (`ppwn0mon`) on `phy0` at launch and tears it down on exit. This means scanning is **2.4GHz only** (channels 1-11). Most consumer APs broadcast on 2.4GHz anyway, so coverage is solid for general recon.
+Both WIFI SCAN and WIFI DEAUTH automatically create a temporary monitor interface (`ppwn0mon`) on `phy0` at launch and tear it down on exit. This means scanning and deauth are **2.4GHz only** (channels 1-11). Most consumer APs broadcast on 2.4GHz anyway, so coverage is solid for general recon.
+
+WIFI DEAUTH runs a quick 15-second scan first, then presents an interactive target picker:
+1. Select an AP (sorted by signal strength)
+2. Pick a specific client or ALL CLIENTS
+3. Deauth frames are injected via raw socket — 5 frames per burst, ~100ms between bursts
+4. Press B to stop the attack
 
 ### Camera Manufacturer Support
 
@@ -147,13 +157,14 @@ All captures saved to `/mmc/root/loot/pagerpwn/` (configurable).
 
 | File Pattern | Contents |
 |---|---|
-| `recon_<ts>.json` | Full port scan results + device classifications |
+| `recon_<ts>.txt` | ARP hosts, port scan results, device classifications |
 | `llmnr_<ts>.hash` | NTLMv2 hashes (hashcat -m 5600 format) |
 | `printer_<ts>.txt` | HP PJL config dump + serial + filesystem |
 | `camera_<ts>.txt` | Camera auth brute force results |
 | `cam_snap_<ts>.txt` | Camera snapshot session stats |
-| `mdns_<ts>.json` | Passive mDNS device catalog |
-| `wifi_scan_<ts>.json` | Discovered APs, clients, and probe requests |
+| `mdns_<ts>.txt` | Passive mDNS device catalog |
+| `wifi_scan_<ts>.txt` | Discovered APs, clients, and probe requests |
+| `wifi_deauth_<ts>.txt` | Deauth attack target, packets sent, associated clients |
 
 ## File Structure
 
@@ -180,6 +191,7 @@ PagerPwn/
 │   ├── cam_snap.py       # multi-manufacturer live camera snapshot viewer
 │   ├── mdns_harvest.py   # passive mDNS device catalog
 │   ├── wifi_scan.py      # passive 802.11 AP + client scanner
+│   ├── wifi_deauth.py    # 802.11 deauth attack with target picker
 │   ├── video_player.py   # PPV splash video player
 │   └── exfil.py          # loot writer + SMB exfil trigger
 ├── tools/
