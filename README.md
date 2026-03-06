@@ -21,7 +21,7 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **Animated splash intro** — glitch/matrix rain video plays on boot (skippable)
 - **SMB exfiltration** — syncs captured loot to a remote share
 - **On-device loot browser** — review captures without SSH
-- **Quick launch** — launch PagerGotchi or Pager Bjorn directly from the PagerPwn menu
+- **Quick launch** — launch PagerGotchi directly from the PagerPwn menu
 
 ## Quick Start
 
@@ -83,7 +83,7 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **VIEW LOOT** | Browse and review captured files on-device |
 | **QUIET MODE** | Toggle passive-only (disables LLMNR poisoning + active scans) |
 | **QUICK LAUNCH: PAGERGOTCHI** | Launch PagerGotchi (by Brainphreak) directly from PagerPwn |
-| **QUICK LAUNCH: PAGER BJORN** | Launch Pager Bjorn directly from PagerPwn |
+
 
 ### WiFi Scan / Deauth Notes
 
@@ -216,8 +216,7 @@ PagerPwn/
 │   ├── arp_poison.py     # ARP poison MitM + optional SSLstrip
 │   ├── video_player.py   # PPV splash video player
 │   ├── exfil.py          # loot writer + SMB exfil trigger
-│   ├── pagergotchi.py    # quick launcher for PagerGotchi
-│   └── pager_bjorn.py    # quick launcher for Pager Bjorn
+│   └── pagergotchi.py    # quick launcher for PagerGotchi
 ├── tools/
 │   └── gen_splash_video.py  # generates splash.ppv + splash.mpg
 └── ui/
@@ -239,7 +238,7 @@ Built by [SLZLabs](https://github.com/SLZLabs).
 
 | Date | Changes |
 |------|---------|
-| 2026-03-04 | Added ARP POISON module (MitM + SSLstrip), WIFI DEAUTH module, quick launchers (PagerGotchi, Pager Bjorn), LEFT/RIGHT page jumping + wrap-around scrolling in all pickers, shell network pre-check |
+| 2026-03-04 | Added ARP POISON module (MitM + SSLstrip), WIFI DEAUTH module, quick launcher (PagerGotchi), LEFT/RIGHT page jumping + wrap-around scrolling in all pickers, shell network pre-check |
 | 2026-03-03 | Multi-manufacturer camera support — auto-fingerprint + brute force for Reolink, Hikvision, Dahua, Generic |
 | 2026-03-02 | Animated splash intro (glitch/matrix rain video), loot outputs changed from JSON to plaintext, VIEW LOOT font bumped to size 2 |
 | 2026-03-02 | Initial public release (v1.0) — recon sweep, LLMNR, JetDirect, camera probe/snapshot, mDNS harvest, WiFi scan, SMB exfil, loot browser |
