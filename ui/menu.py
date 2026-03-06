@@ -288,17 +288,7 @@ class Menu:
                 # SELECT
                 label, callback = self.items[self.cursor]
 
-                if label.startswith("QUIET MODE"):
-                    new_state = not config.get("QUIET_MODE", False)
-                    config["QUIET_MODE"] = new_state
-                    self.items[self.cursor] = (
-                        f"QUIET MODE [{'ON ' if new_state else 'OFF'}]",
-                        callback,
-                    )
-                    p.beep(400 if new_state else 800, 80)
-                    self._draw_menu()
-
-                elif label == "EXIT":
+                if label == "EXIT":
                     self._do_exit(config)
                     return
 

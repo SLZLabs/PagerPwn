@@ -18,10 +18,11 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **WiFi scanning** — passive 802.11 monitor-mode scanner with channel hopping (2.4GHz)
 - **WiFi deauth** — targeted or broadcast 802.11 deauthentication attacks with interactive target picker
 - **ARP poison MitM** — unicast ARP spoofing with optional SSLstrip proxy, live color-coded packet feed
+- **PwnSniff** — passive promiscuous DPI sniffer (DNS, HTTP, TLS SNI, DHCP, SMB, SSH, cleartext creds)
 - **Animated splash intro** — glitch/matrix rain video plays on boot (skippable)
 - **SMB exfiltration** — syncs captured loot to a remote share
 - **On-device loot browser** — review captures without SSH
-- **Quick launch** — launch PagerGotchi directly from the PagerPwn menu
+
 
 ## Quick Start
 
@@ -71,7 +72,7 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | Module | Description |
 |--------|-------------|
 | **RECON SWEEP** | ARP sweep + port scan all live hosts, classifies devices automatically |
-| **LLMNR LISTEN** | LLMNR/NBT-NS poisoner with mini SMB server — captures NTLMv2 hashes |
+| **LLMNR LISTEN** | LLMNR/NBT-NS poisoner with SMB2 server — live scrolling feed, NTLMv2 hash capture (hashcat -m 5600) |
 | **JETDIRECT PROBE** | HP printer PJL enumeration, config dump, filesystem listing, LCD prank |
 | **CAMERA PROBE** | Multi-manufacturer camera fingerprint + credential brute force (Reolink, Hikvision, Dahua, Generic) |
 | **CAM SNAPSHOT** | Live camera JPEG viewer on the pager LCD — auto-selects snapshot API per manufacturer |
@@ -79,10 +80,9 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **WIFI SCAN** | Passive 802.11 scanner — discovers APs, clients, and probe requests via monitor mode (2.4GHz) |
 | **WIFI DEAUTH** | Active 802.11 deauthentication — scan, pick an AP and client, then blast deauth frames |
 | **ARP POISON** | ARP MitM with optional SSLstrip — pick a target, sniff DNS/HTTP/creds with live feed |
+| **PWNSNIFF** | Passive promiscuous DPI sniffer — DNS, HTTP, TLS SNI, DHCP, SMB, SSH, cleartext creds |
 | **EXFIL LOOT** | Syncs all captured loot to a remote SMB share |
 | **VIEW LOOT** | Browse and review captured files on-device |
-| **QUIET MODE** | Toggle passive-only (disables LLMNR poisoning + active scans) |
-| **QUICK LAUNCH: PAGERGOTCHI** | Launch PagerGotchi (by Brainphreak) directly from PagerPwn |
 
 
 ### WiFi Scan / Deauth Notes
@@ -111,6 +111,21 @@ Key details:
 - SSLstrip uses nft redirect rules scoped to the target IP only, with a multi-threaded proxy that rewrites `https://` → `http://` and strips HSTS/CSP headers
 - Live LCD feed is color-coded: green=credentials, cyan=DNS, yellow=HTTP, magenta=SSLstrip
 - On stop: nft rules removed, ARP caches restored, IP forwarding disabled, "ARP RESTORED" confirmation screen
+
+### PwnSniff Notes
+
+PWNSNIFF is a fully passive sniffer — no ARP poisoning, no MitM, zero injected packets. It puts the interface in promiscuous mode and performs deep packet inspection on all traffic visible on the wire.
+
+Protocols parsed:
+- **DNS** — queries and responses (standard, mDNS port 5353, LLMNR port 5355)
+- **HTTP** — GET/POST method + Host header, Authorization headers, cookies, POST body credential extraction
+- **TLS** — SNI (Server Name Indication) from ClientHello handshakes
+- **DHCP** — discover/offer/request/ack with hostname and IP assignment
+- **SMB** — NTLMSSP session setup (domain\user extraction)
+- **SSH** — version strings
+- **Cleartext** — FTP USER/PASS, Telnet, SMTP AUTH, POP3, IMAP
+
+Live LCD feed is color-coded: green=credentials, cyan=DNS/mDNS/LLMNR, yellow=HTTP, magenta=TLS SNI, white=DHCP/SMB/SSH. Promiscuous mode is automatically enabled on start and disabled on exit.
 
 ### Camera Manufacturer Support
 
@@ -186,6 +201,7 @@ All captures saved to `/mmc/root/loot/pagerpwn/` (configurable).
 | `wifi_scan_<ts>.txt` | Discovered APs, clients, and probe requests |
 | `wifi_deauth_<ts>.txt` | Deauth attack target, packets sent, associated clients |
 | `arp_poison_<ts>.txt` | ARP MitM session — target, mode, full captured feed |
+| `pwnsniff_<ts>.txt` | Promiscuous sniff session — packets, events, full DPI feed |
 
 ## File Structure
 
@@ -214,9 +230,9 @@ PagerPwn/
 │   ├── wifi_scan.py      # passive 802.11 AP + client scanner
 │   ├── wifi_deauth.py    # 802.11 deauth attack with target picker
 │   ├── arp_poison.py     # ARP poison MitM + optional SSLstrip
+│   ├── pwn_sniff.py      # passive promiscuous DPI sniffer
 │   ├── video_player.py   # PPV splash video player
 │   ├── exfil.py          # loot writer + SMB exfil trigger
-│   └── pagergotchi.py    # quick launcher for PagerGotchi
 ├── tools/
 │   └── gen_splash_video.py  # generates splash.ppv + splash.mpg
 └── ui/
@@ -238,7 +254,8 @@ Built by [SLZLabs](https://github.com/SLZLabs).
 
 | Date | Changes |
 |------|---------|
-| 2026-03-04 | Added ARP POISON module (MitM + SSLstrip), WIFI DEAUTH module, quick launcher (PagerGotchi), LEFT/RIGHT page jumping + wrap-around scrolling in all pickers, shell network pre-check |
+| 2026-03-06 | Added PWNSNIFF passive DPI sniffer, rewrote LLMNR module with SMB2 support + live scrolling feed, removed Pager Bjorn + PagerGotchi quick launchers + Quiet Mode |
+| 2026-03-04 | Added ARP POISON module (MitM + SSLstrip), WIFI DEAUTH module, LEFT/RIGHT page jumping + wrap-around scrolling in all pickers, shell network pre-check |
 | 2026-03-03 | Multi-manufacturer camera support — auto-fingerprint + brute force for Reolink, Hikvision, Dahua, Generic |
 | 2026-03-02 | Animated splash intro (glitch/matrix rain video), loot outputs changed from JSON to plaintext, VIEW LOOT font bumped to size 2 |
 | 2026-03-02 | Initial public release (v1.0) — recon sweep, LLMNR, JetDirect, camera probe/snapshot, mDNS harvest, WiFi scan, SMB exfil, loot browser |

