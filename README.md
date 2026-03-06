@@ -17,6 +17,7 @@ Turns the pager into a handheld hacking console — full LCD menu, button naviga
 - **mDNS harvesting** — passive device discovery (zero packets sent)
 - **WiFi scanning** — passive 802.11 monitor-mode scanner with channel hopping (2.4GHz)
 - **WiFi deauth** — targeted or broadcast 802.11 deauthentication attacks with interactive target picker
+- **ARP poison MitM** — unicast ARP spoofing with optional SSLstrip proxy, live color-coded packet feed
 - **Animated splash intro** — glitch/matrix rain video plays on boot (skippable)
 - **SMB exfiltration** — syncs captured loot to a remote share
 - **On-device loot browser** — review captures without SSH
@@ -77,6 +78,7 @@ The `pagerctl` library (`libpagerctl.so` + `pagerctl.py`) is bundled — no extr
 | **mDNS HARVEST** | Passive mDNS listener — catalogs devices without sending any packets |
 | **WIFI SCAN** | Passive 802.11 scanner — discovers APs, clients, and probe requests via monitor mode (2.4GHz) |
 | **WIFI DEAUTH** | Active 802.11 deauthentication — scan, pick an AP and client, then blast deauth frames |
+| **ARP POISON** | ARP MitM with optional SSLstrip — pick a target, sniff DNS/HTTP/creds with live feed |
 | **EXFIL LOOT** | Syncs all captured loot to a remote SMB share |
 | **VIEW LOOT** | Browse and review captured files on-device |
 | **QUIET MODE** | Toggle passive-only (disables LLMNR poisoning + active scans) |
@@ -94,6 +96,21 @@ WIFI DEAUTH runs a quick 15-second scan first, then presents an interactive targ
 2. Pick a specific client or ALL CLIENTS
 3. Deauth frames are injected via raw socket — 5 frames per burst, ~100ms between bursts
 4. Press B to stop the attack
+
+### ARP Poison Notes
+
+ARP POISON performs a targeted man-in-the-middle attack between a single host and the gateway. Two modes are available:
+
+- **SNIFF ONLY** — ARP poison + passive packet capture (DNS, HTTP, cleartext creds)
+- **SSLSTRIP + SNIFF** — adds an HTTP proxy that downgrades HTTPS redirects to HTTP
+
+Key details:
+- Uses **unicast spoofed ARP requests** (not broadcast) — only the target and gateway see the spoofed packets, the rest of the LAN is unaffected
+- ARP requests (not replies) bypass Linux's default `arp_accept=0` — the kernel updates its cache from the sender fields of incoming requests
+- Sniffer parses DNS queries/responses, HTTP GET/POST with Host/Auth headers, POST body credential extraction, and cleartext protocols (FTP, Telnet, SMTP, POP3)
+- SSLstrip uses nft redirect rules scoped to the target IP only, with a multi-threaded proxy that rewrites `https://` → `http://` and strips HSTS/CSP headers
+- Live LCD feed is color-coded: green=credentials, cyan=DNS, yellow=HTTP, magenta=SSLstrip
+- On stop: nft rules removed, ARP caches restored, IP forwarding disabled, "ARP RESTORED" confirmation screen
 
 ### Camera Manufacturer Support
 
@@ -168,6 +185,7 @@ All captures saved to `/mmc/root/loot/pagerpwn/` (configurable).
 | `mdns_<ts>.txt` | Passive mDNS device catalog |
 | `wifi_scan_<ts>.txt` | Discovered APs, clients, and probe requests |
 | `wifi_deauth_<ts>.txt` | Deauth attack target, packets sent, associated clients |
+| `arp_poison_<ts>.txt` | ARP MitM session — target, mode, full captured feed |
 
 ## File Structure
 
@@ -195,6 +213,7 @@ PagerPwn/
 │   ├── mdns_harvest.py   # passive mDNS device catalog
 │   ├── wifi_scan.py      # passive 802.11 AP + client scanner
 │   ├── wifi_deauth.py    # 802.11 deauth attack with target picker
+│   ├── arp_poison.py     # ARP poison MitM + optional SSLstrip
 │   ├── video_player.py   # PPV splash video player
 │   ├── exfil.py          # loot writer + SMB exfil trigger
 │   ├── pagergotchi.py    # quick launcher for PagerGotchi
@@ -215,6 +234,15 @@ PagerPwn/
 ## Credits
 
 Built by [SLZLabs](https://github.com/SLZLabs).
+
+## Changelog
+
+| Date | Changes |
+|------|---------|
+| 2026-03-04 | Added ARP POISON module (MitM + SSLstrip), WIFI DEAUTH module, quick launchers (PagerGotchi, Pager Bjorn), LEFT/RIGHT page jumping + wrap-around scrolling in all pickers, shell network pre-check |
+| 2026-03-03 | Multi-manufacturer camera support — auto-fingerprint + brute force for Reolink, Hikvision, Dahua, Generic |
+| 2026-03-02 | Animated splash intro (glitch/matrix rain video), loot outputs changed from JSON to plaintext, VIEW LOOT font bumped to size 2 |
+| 2026-03-02 | Initial public release (v1.0) — recon sweep, LLMNR, JetDirect, camera probe/snapshot, mDNS harvest, WiFi scan, SMB exfil, loot browser |
 
 ## License
 

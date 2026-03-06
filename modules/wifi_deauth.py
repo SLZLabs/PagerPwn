@@ -254,7 +254,7 @@ def _draw_ap_picker(pager, sorted_aps, client_counts, cursor):
 
     # Footer
     pager.fill_rect(0, 200, 480, 22, pager.rgb(40, 40, 40))
-    pager.draw_text(4, 203, f"[UP/DN] Scroll  [A] Select  [B] Back   {cursor+1}/{len(sorted_aps)}", pager.GRAY, 1)
+    pager.draw_text(4, 203, f"[UP/DN] [LT/RT]Page  [A] Select  [B] Back  {cursor+1}/{len(sorted_aps)}", pager.GRAY, 1)
 
     pager.flip()
 
@@ -296,7 +296,7 @@ def _draw_client_picker(pager, ap_ssid, ap_bssid, client_list, cursor):
 
     # Footer
     pager.fill_rect(0, 200, 480, 22, pager.rgb(40, 40, 40))
-    pager.draw_text(4, 203, f"[UP/DN] Scroll  [A] Select  [B] Back   {cursor+1}/{len(entries)}", pager.GRAY, 1)
+    pager.draw_text(4, 203, f"[UP/DN] [LT/RT]Page  [A] Select  [B] Back  {cursor+1}/{len(entries)}", pager.GRAY, 1)
 
     pager.flip()
 
@@ -467,13 +467,22 @@ def run(config, ui_callback, stop_event, pager=None):
         btn, etype, _ = event
         if etype != Pager.EVENT_PRESS:
             continue
+        n_aps = len(sorted_aps)
         if btn == Pager.BTN_UP:
-            cursor = max(0, cursor - 1)
+            cursor = (cursor - 1) % n_aps
             pager.beep(400, 15)
             _draw_ap_picker(pager, sorted_aps, ap_client_counts, cursor)
         elif btn == Pager.BTN_DOWN:
-            cursor = min(len(sorted_aps) - 1, cursor + 1)
+            cursor = (cursor + 1) % n_aps
             pager.beep(400, 15)
+            _draw_ap_picker(pager, sorted_aps, ap_client_counts, cursor)
+        elif btn == Pager.BTN_LEFT:
+            cursor = (cursor - 7) % n_aps
+            pager.beep(500, 20)
+            _draw_ap_picker(pager, sorted_aps, ap_client_counts, cursor)
+        elif btn == Pager.BTN_RIGHT:
+            cursor = (cursor + 7) % n_aps
+            pager.beep(500, 20)
             _draw_ap_picker(pager, sorted_aps, ap_client_counts, cursor)
         elif btn == Pager.BTN_A:
             selected_ap = sorted_aps[cursor]
@@ -512,13 +521,22 @@ def run(config, ui_callback, stop_event, pager=None):
         btn, etype, _ = event
         if etype != Pager.EVENT_PRESS:
             continue
+        n_entries = len(ap_clients) + 1  # +1 for ALL CLIENTS
         if btn == Pager.BTN_UP:
-            cursor = max(0, cursor - 1)
+            cursor = (cursor - 1) % n_entries
             pager.beep(400, 15)
             _draw_client_picker(pager, target_ssid, target_bssid, ap_clients, cursor)
         elif btn == Pager.BTN_DOWN:
-            cursor = min(len(ap_clients), cursor + 1)
+            cursor = (cursor + 1) % n_entries
             pager.beep(400, 15)
+            _draw_client_picker(pager, target_ssid, target_bssid, ap_clients, cursor)
+        elif btn == Pager.BTN_LEFT:
+            cursor = (cursor - 7) % n_entries
+            pager.beep(500, 20)
+            _draw_client_picker(pager, target_ssid, target_bssid, ap_clients, cursor)
+        elif btn == Pager.BTN_RIGHT:
+            cursor = (cursor + 7) % n_entries
+            pager.beep(500, 20)
             _draw_client_picker(pager, target_ssid, target_bssid, ap_clients, cursor)
         elif btn == Pager.BTN_A:
             if cursor == 0:

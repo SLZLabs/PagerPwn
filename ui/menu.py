@@ -102,7 +102,7 @@ class Menu:
         # Status bar
         bar_y = 222 - STATUS_H
         p.fill_rect(0, bar_y, 480, STATUS_H, C_STATUS)
-        p.draw_text(4, bar_y + 3, "[UP/DN] MOVE  [A] SELECT  [BB] EXIT", C_DIM, 1)
+        p.draw_text(4, bar_y + 3, "[UP/DN] MOVE [LT/RT] PAGE [A] SELECT [BB] EXIT", C_DIM, 1)
 
         p.flip()
 
@@ -265,21 +265,22 @@ class Menu:
             if etype != Pager.EVENT_PRESS:
                 continue
 
-            if btn == Pager.BTN_UP:
-                self.cursor = (self.cursor - 1) % len(self.items)
+            if btn in (Pager.BTN_UP, Pager.BTN_DOWN,
+                       Pager.BTN_LEFT, Pager.BTN_RIGHT):
+                n = len(self.items)
+                if btn == Pager.BTN_UP:
+                    self.cursor = (self.cursor - 1) % n
+                elif btn == Pager.BTN_DOWN:
+                    self.cursor = (self.cursor + 1) % n
+                elif btn == Pager.BTN_LEFT:
+                    self.cursor = max(0, self.cursor - ITEMS_MAX)
+                elif btn == Pager.BTN_RIGHT:
+                    self.cursor = min(n - 1, self.cursor + ITEMS_MAX)
+                # Fix scroll offset
                 if self.cursor < self.scroll_offset:
                     self.scroll_offset = self.cursor
                 elif self.cursor >= self.scroll_offset + ITEMS_MAX:
                     self.scroll_offset = self.cursor - ITEMS_MAX + 1
-                p.beep(600, 25)
-                self._draw_menu()
-
-            elif btn == Pager.BTN_DOWN:
-                self.cursor = (self.cursor + 1) % len(self.items)
-                if self.cursor >= self.scroll_offset + ITEMS_MAX:
-                    self.scroll_offset = self.cursor - ITEMS_MAX + 1
-                elif self.cursor < self.scroll_offset:
-                    self.scroll_offset = self.cursor
                 p.beep(600, 25)
                 self._draw_menu()
 

@@ -82,7 +82,7 @@ class ScrollViewer:
         p.fill_rect(0, bar_y, 480, STATUS_H, C_STATUS)
         end_line = min(self.offset + LINES_MAX, total)
         pos = f"{self.offset + 1}-{end_line}/{total}"
-        p.draw_text(4, bar_y + 2, f"[UP/DN] SCROLL [B] BACK {pos}", C_DIM, 1)
+        p.draw_text(4, bar_y + 2, f"[UP/DN] SCROLL [LT/RT] PAGE [B] BACK {pos}", C_DIM, 1)
 
         p.flip()
 
@@ -102,14 +102,17 @@ class ScrollViewer:
             if etype != Pager.EVENT_PRESS:
                 continue
 
-            if btn == Pager.BTN_DOWN:
+            if btn in (Pager.BTN_DOWN, Pager.BTN_UP,
+                       Pager.BTN_RIGHT, Pager.BTN_LEFT):
                 max_off = max(0, len(self.lines) - LINES_MAX)
-                self.offset = min(self.offset + 1, max_off)
-                p.beep(600, 20)
-                self._draw()
-
-            elif btn == Pager.BTN_UP:
-                self.offset = max(0, self.offset - 1)
+                if btn == Pager.BTN_DOWN:
+                    self.offset = min(self.offset + 1, max_off)
+                elif btn == Pager.BTN_UP:
+                    self.offset = max(0, self.offset - 1)
+                elif btn == Pager.BTN_RIGHT:
+                    self.offset = min(self.offset + LINES_MAX, max_off)
+                elif btn == Pager.BTN_LEFT:
+                    self.offset = max(0, self.offset - LINES_MAX)
                 p.beep(600, 20)
                 self._draw()
 

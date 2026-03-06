@@ -15,6 +15,7 @@ Menu:
   mDNS HARVEST     Passive mDNS device catalog (zero active packets)
   WIFI SCAN        Passive 802.11 scanner (APs + client probes)
   WIFI DEAUTH      802.11 deauth attack with interactive target picker
+  ARP POISON       ARP MitM + optional SSLstrip with live feed
   EXFIL LOOT       Trigger LootOverSMB sync to home server
   VIEW LOOT        Browse captured loot files on-device
   QUIET MODE       Toggle passive-only mode
@@ -60,6 +61,7 @@ cam_snap     = _try_import("cam_snap")
 video_player = _try_import("video_player")
 wifi_scan     = _try_import("wifi_scan")
 wifi_deauth   = _try_import("wifi_deauth")
+arp_poison    = _try_import("arp_poison")
 pagergotchi   = _try_import("pagergotchi")
 pager_bjorn   = _try_import("pager_bjorn")
 
@@ -586,6 +588,27 @@ def run_wifi_deauth(config, ui_callback, stop_event):
     return result
 
 
+def run_arp_poison(config, ui_callback, stop_event):
+    """ARP poison MitM with optional SSLstrip."""
+    if arp_poison is None:
+        ui_callback("ARP POISON", "Module not found")
+        time.sleep(2)
+        return None
+
+    pager_ref = _MENU.pager if _MENU else None
+    result = arp_poison.run(config, ui_callback, stop_event, pager=pager_ref)
+
+    if result and result.get("creds") and _MENU:
+        creds = result["creds"]
+        _MENU.draw_trophy(
+            f"{len(creds)} CRED(S) CAPTURED",
+            creds[0][:36] if creds else "",
+            f"{result.get('target_ip', '?')} ({result.get('duration', 0)}s)",
+        )
+
+    return result
+
+
 def run_pagergotchi(config, ui_callback, stop_event):
     """Quick launch PagerGotchi (by Brainphreak)."""
     if pagergotchi is None:
@@ -700,6 +723,7 @@ def main():
             ("mDNS HARVEST",        run_mdns_harvest),
             ("WIFI SCAN",           run_wifi_scan),
             ("WIFI DEAUTH",         run_wifi_deauth),
+            ("ARP POISON",          run_arp_poison),
             ("EXFIL LOOT",          run_exfil),
             ("VIEW LOOT",           run_view_loot),
             ("QUIET MODE [OFF]",    None),
